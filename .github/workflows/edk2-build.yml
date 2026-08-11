@@ -1,0 +1,52 @@
+name: EDK2 Build + Boot Check
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-boot-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential nasm iasl uuid-dev python3 qemu-system-x86
+
+      - name: Clone EDK2
+        run: |
+          git clone --recursive --depth 1 https://github.com/tianocore/edk2.git
+
+      - name: Build BaseTools
+        working-directory: edk2
+        run: |
+          source edksetup.sh
+          make -C BaseTools
+
+      - name: Build OVMF
+        working-directory: edk2
+        run: |
+          source edksetup.sh
+          build -p OvmfPkg/OvmfPkgX64.dsc -a X64 -t GCC5 -b DEBUG
+
+      - name: Boot-test in headless QEMU
+        working-directory: edk2
+        run: |
+          FW_DIR=Build/OvmfX64/DEBUG_GCC5/FV
+          timeout 30 qemu-system-x86_64 \
+            -drive if=pflash,format=raw,readonly=on,file=$FW_DIR/OVMF_CODE.fd \
+            -drive if=pflash,format=raw,file=$FW_DIR/OVMF_VARS.fd \
+            -m 256M -net none -nographic -serial file:qemu_output.log \
+            || true
+          echo "----- QEMU output -----"
+          cat qemu_output.log
+          echo "------------------------"
+          grep -q "UEFI Interactive Shell" qemu_output.log && \
+            echo "PASS: firmware booted to UEFI Shell" || \
+            (echo "FAIL: did not reach UEFI Shell" && exit 1)
