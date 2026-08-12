@@ -35,6 +35,11 @@ jobs:
         run: |
           pip install --upgrade -r pip-requirements.txt
 
+      - name: Build BaseTools (GenSec, GenFfs, GenFv, etc.)
+        working-directory: edk2
+        run: |
+          make -C BaseTools
+
       - name: stuart_setup
         working-directory: edk2
         run: |
