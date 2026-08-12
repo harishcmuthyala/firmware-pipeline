@@ -39,7 +39,7 @@ jobs:
         working-directory: edk2
         run: |
           FW_DIR=Build/OvmfX64/DEBUG_GCC/FV
-          (sleep 5 && printf '\n') | timeout 30 qemu-system-x86_64 \
+          (sleep 5 && printf '\n' && sleep 3 && printf '\n') | timeout 30 qemu-system-x86_64 \
             -drive if=pflash,format=raw,readonly=on,file=$FW_DIR/OVMF_CODE.fd \
             -drive if=pflash,format=raw,file=$FW_DIR/OVMF_VARS.fd \
             -m 256M -net none -nographic \
