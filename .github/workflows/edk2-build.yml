@@ -55,13 +55,20 @@ jobs:
         run: |
           stuart_build -c OvmfPkg/PlatformCI/PlatformBuild.py TOOL_CHAIN_TAG=GCC -a X64
 
+      - name: Add our own startup.nsh (ensures a clean exit instead of idling at Shell>)
+        working-directory: edk2
+        run: |
+          mkdir -p VirtualDrive
+          echo '@echo -off' > VirtualDrive/startup.nsh
+          echo 'echo Boot check: reached UEFI Shell successfully' >> VirtualDrive/startup.nsh
+          echo 'reset -s' >> VirtualDrive/startup.nsh
+
       - name: Boot-test in headless QEMU (official TianoCore mechanism)
         working-directory: edk2
         env:
           QEMU_HEADLESS: "TRUE"
-          MAKE_STARTUP_NSH: "TRUE"
         run: |
-          xvfb-run -a stuart_build -c OvmfPkg/PlatformCI/PlatformBuild.py TOOL_CHAIN_TAG=GCC -a X64 --FlashOnly
+          timeout 120 xvfb-run -a stuart_build -c OvmfPkg/PlatformCI/PlatformBuild.py TOOL_CHAIN_TAG=GCC -a X64 --FlashOnly
 
       - name: Upload built firmware
         uses: actions/upload-artifact@v4
