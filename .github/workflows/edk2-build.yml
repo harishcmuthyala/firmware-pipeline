@@ -14,40 +14,45 @@ jobs:
       - name: Checkout this repo
         uses: actions/checkout@v4
 
-      - name: Install toolchain
+      - name: Install system toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential nasm iasl uuid-dev python3 qemu-system-x86
+          sudo apt-get install -y build-essential nasm iasl uuid-dev qemu-system-x86 python3 python3-pip
 
       - name: Clone EDK2
         run: |
           git clone --recursive --depth 1 https://github.com/tianocore/edk2.git
 
-      - name: Build BaseTools
+      - name: Install TianoCore's official CI tooling (edk2-pytool-extensions)
         working-directory: edk2
         run: |
-          source edksetup.sh
-          make -C BaseTools
+          pip install --upgrade -r pip-requirements.txt
 
-      - name: Build OVMF
+      - name: stuart_setup
         working-directory: edk2
         run: |
-          source edksetup.sh
-          build -p OvmfPkg/OvmfPkgX64.dsc -a X64 -t GCC -b DEBUG -D SHELL_TYPE=BUILD_SHELL
+          stuart_setup -c OvmfPkg/PlatformCI/PlatformBuild.py TOOL_CHAIN_TAG=GCC -a X64
 
-      - name: Boot-test in headless QEMU
+      - name: stuart_update
         working-directory: edk2
         run: |
-          FW_DIR=Build/OvmfX64/DEBUG_GCC/FV
-          (sleep 5 && printf '\n' && sleep 3 && printf '\n') | timeout 30 qemu-system-x86_64 \
-            -drive if=pflash,format=raw,readonly=on,file=$FW_DIR/OVMF_CODE.fd \
-            -drive if=pflash,format=raw,file=$FW_DIR/OVMF_VARS.fd \
-            -m 256M -net none -nographic \
-            | tee qemu_output.log \
-            || true
-          echo "----- QEMU output -----"
-          cat qemu_output.log
-          echo "------------------------"
-          grep -q "UEFI Interactive Shell" qemu_output.log && \
-            echo "PASS: firmware booted to UEFI Shell" || \
-            (echo "FAIL: did not reach UEFI Shell" && exit 1)
+          stuart_update -c OvmfPkg/PlatformCI/PlatformBuild.py TOOL_CHAIN_TAG=GCC -a X64
+
+      - name: stuart_build (compile OVMF)
+        working-directory: edk2
+        run: |
+          stuart_build -c OvmfPkg/PlatformCI/PlatformBuild.py TOOL_CHAIN_TAG=GCC -a X64
+
+      - name: Boot-test in headless QEMU (official TianoCore mechanism)
+        working-directory: edk2
+        env:
+          QEMU_HEADLESS: "TRUE"
+          MAKE_STARTUP_NSH: "TRUE"
+        run: |
+          stuart_build -c OvmfPkg/PlatformCI/PlatformBuild.py TOOL_CHAIN_TAG=GCC -a X64 --FlashOnly
+
+      - name: Upload built firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: ovmf-firmware
+          path: edk2/Build/OvmfX64/DEBUG_GCC/FV/OVMF_CODE.fd
