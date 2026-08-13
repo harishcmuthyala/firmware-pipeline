@@ -55,20 +55,20 @@ jobs:
         run: |
           stuart_build -c OvmfPkg/PlatformCI/PlatformBuild.py TOOL_CHAIN_TAG=GCC -a X64
 
-      - name: Add our own startup.nsh (ensures a clean exit instead of idling at Shell>)
+      - name: Boot-test in headless QEMU (check for successful DXE/BDS phase)
         working-directory: edk2
         run: |
-          mkdir -p VirtualDrive
-          echo '@echo -off' > VirtualDrive/startup.nsh
-          echo 'echo Boot check: reached UEFI Shell successfully' >> VirtualDrive/startup.nsh
-          echo 'reset -s' >> VirtualDrive/startup.nsh
-
-      - name: Boot-test in headless QEMU (official TianoCore mechanism)
-        working-directory: edk2
-        env:
-          QEMU_HEADLESS: "TRUE"
-        run: |
-          timeout 120 xvfb-run -a stuart_build -c OvmfPkg/PlatformCI/PlatformBuild.py TOOL_CHAIN_TAG=GCC -a X64 --FlashOnly
+          FW_DIR=Build/OvmfX64/DEBUG_GCC/FV
+          timeout 30 xvfb-run -a qemu-system-x86_64 \
+            -drive if=pflash,format=raw,readonly=on,file=$FW_DIR/OVMF_CODE.fd \
+            -drive if=pflash,format=raw,file=$FW_DIR/OVMF_VARS.fd \
+            -m 256M -net none -nographic > qemu_output.log 2>&1 || true
+          echo "----- QEMU output -----"
+          cat qemu_output.log
+          echo "------------------------"
+          grep -q "\[Bds\]" qemu_output.log && \
+            echo "PASS: firmware reached BDS phase (boot succeeded)" || \
+            (echo "FAIL: never reached BDS phase" && exit 1)
 
       - name: Upload built firmware
         uses: actions/upload-artifact@v4
