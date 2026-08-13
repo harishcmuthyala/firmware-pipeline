@@ -1,0 +1,77 @@
+name: EDK2 Build + Boot Check
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-boot-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Install system toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential nasm iasl uuid-dev qemu-system-x86 python3 python3-pip gnupg ca-certificates xvfb
+
+      - name: Install Mono (required by stuart's NuGet-based dependency fetching on Linux)
+        run: |
+          sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 3FA7E0328081BFF6A14DA29AA6A19B38D3D831EF
+          echo "deb https://download.mono-project.com/repo/ubuntu stable-focal main" | sudo tee /etc/apt/sources.list.d/mono-official-stable.list
+          sudo apt-get update
+          sudo apt-get install -y mono-devel
+
+      - name: Clone EDK2
+        run: |
+          git clone --recursive --depth 1 https://github.com/tianocore/edk2.git
+
+      - name: Install TianoCore's official CI tooling (edk2-pytool-extensions)
+        working-directory: edk2
+        run: |
+          pip install --upgrade -r pip-requirements.txt
+
+      - name: Build BaseTools (GenSec, GenFfs, GenFv, etc.)
+        working-directory: edk2
+        run: |
+          make -C BaseTools
+
+      - name: stuart_setup
+        working-directory: edk2
+        run: |
+          stuart_setup -c OvmfPkg/PlatformCI/PlatformBuild.py TOOL_CHAIN_TAG=GCC -a X64
+
+      - name: stuart_update
+        working-directory: edk2
+        run: |
+          stuart_update -c OvmfPkg/PlatformCI/PlatformBuild.py TOOL_CHAIN_TAG=GCC -a X64
+
+      - name: stuart_build (compile OVMF)
+        working-directory: edk2
+        run: |
+          stuart_build -c OvmfPkg/PlatformCI/PlatformBuild.py TOOL_CHAIN_TAG=GCC -a X64
+
+      - name: Boot-test in headless QEMU (check for successful DXE/BDS phase)
+        working-directory: edk2
+        run: |
+          FW_DIR=Build/OvmfX64/DEBUG_GCC/FV
+          timeout 30 xvfb-run -a qemu-system-x86_64 \
+            -drive if=pflash,format=raw,readonly=on,file=$FW_DIR/OVMF_CODE.fd \
+            -drive if=pflash,format=raw,file=$FW_DIR/OVMF_VARS.fd \
+            -m 256M -net none -nographic > qemu_output.log 2>&1 || true
+          echo "----- QEMU output -----"
+          cat qemu_output.log
+          echo "------------------------"
+          grep -q "BdsDxe" qemu_output.log && \
+            echo "PASS: firmware reached BDS phase (boot succeeded)" || \
+            (echo "FAIL: never reached BDS phase" && exit 1)
+
+      - name: Upload built firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: ovmf-firmware
+          path: edk2/Build/OvmfX64/DEBUG_GCC/FV/OVMF_CODE.fd
