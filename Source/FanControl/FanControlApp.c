@@ -1,6 +1,7 @@
 #include <Uefi.h>
 #include <Library/UefiLib.h>
 #include <Library/UefiApplicationEntryPoint.h>
+#include <Library/UefiRuntimeServicesTableLib.h>
 #include "FanControl.h"
 
 EFI_STATUS
@@ -25,6 +26,11 @@ UefiMain (
   } else {
     Print (L"OK\n");
   }
+
+  // Since this app IS the boot target (no Shell involved), explicitly
+  // shut the system down when done -- otherwise BDS would try to find
+  // another boot option next, and QEMU would never cleanly exit.
+  gRT->ResetSystem (EfiResetShutdown, EFI_SUCCESS, 0, NULL);
 
   return EFI_SUCCESS;
 }

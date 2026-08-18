@@ -10,19 +10,16 @@ APP_DIR="$EDK2_DIR/Build/ServerPlatform/DEBUG_GCC/X64"
 VDISK="$EDK2_DIR/vdisk"
 LOG_FILE="Tests/BootTests/boot_output.log"
 
-mkdir -p "$VDISK"
+mkdir -p "$VDISK/EFI/BOOT"
 mkdir -p "$(dirname "$LOG_FILE")"
 
-# Copy every .efi app that was actually built -- no hardcoded names
-cp "$APP_DIR"/*.efi "$VDISK"/ 2>/dev/null || true
-
-# Build a startup.nsh that runs every app found, then resets
-echo '@echo -off' > "$VDISK/startup.nsh"
-for app in "$VDISK"/*.efi; do
-  [ -e "$app" ] || continue
-  echo "$(basename "$app")" >> "$VDISK/startup.nsh"
-done
-echo 'reset -s' >> "$VDISK/startup.nsh"
+# Place the first built app at the spec-standard direct-boot path.
+# Firmware will boot straight into it -- no interactive Shell,
+# no Boot Manager Menu, no keystrokes needed at all.
+FIRST_APP=$(ls "$APP_DIR"/*.efi 2>/dev/null | head -n 1)
+if [ -n "$FIRST_APP" ]; then
+  cp "$FIRST_APP" "$VDISK/EFI/BOOT/BOOTX64.EFI"
+fi
 
 timeout 30 xvfb-run -a qemu-system-x86_64 \
   -drive if=pflash,format=raw,readonly=on,file="$FW_DIR/OVMF_CODE.fd" \

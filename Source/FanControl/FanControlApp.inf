@@ -16,3 +16,4 @@
 [LibraryClasses]
   UefiApplicationEntryPoint
   UefiLib
+  UefiRuntimeServicesTableLib
