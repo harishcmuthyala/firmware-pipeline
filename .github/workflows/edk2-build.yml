@@ -55,23 +55,46 @@ jobs:
         run: |
           stuart_build -c OvmfPkg/PlatformCI/PlatformBuild.py TOOL_CHAIN_TAG=GCC -a X64
 
-      - name: Boot-test in headless QEMU (check for successful DXE/BDS phase)
+      - name: Copy custom firmware source into the EDK2 tree
+        run: |
+          mkdir -p edk2/Source edk2/Platform
+          cp -r Source/* edk2/Source/
+          cp Platform/ServerPlatform.dsc edk2/Platform/
+
+      - name: Build custom platform firmware
         working-directory: edk2
         run: |
-          FW_DIR=Build/OvmfX64/DEBUG_GCC/FV
-          timeout 30 xvfb-run -a qemu-system-x86_64 \
-            -drive if=pflash,format=raw,readonly=on,file=$FW_DIR/OVMF_CODE.fd \
-            -drive if=pflash,format=raw,file=$FW_DIR/OVMF_VARS.fd \
-            -m 256M -net none -nographic > qemu_output.log 2>&1 || true
-          echo "----- QEMU output -----"
-          cat qemu_output.log
-          echo "------------------------"
-          grep -q "BdsDxe" qemu_output.log && \
-            echo "PASS: firmware reached BDS phase (boot succeeded)" || \
-            (echo "FAIL: never reached BDS phase" && exit 1)
+          source edksetup.sh
+          build -p Platform/ServerPlatform.dsc -a X64 -t GCC -b DEBUG
+
+      - name: Boot the platform and capture output (generic, no hardcoded app names)
+        run: |
+          bash scripts/run_platform_boot_test.sh
+
+      - name: Install pytest
+        run: pip install pytest
+
+      - name: Run boot-integration tests
+        run: pytest Tests/BootTests/ -v
 
       - name: Upload built firmware
         uses: actions/upload-artifact@v4
         with:
           name: ovmf-firmware
           path: edk2/Build/OvmfX64/DEBUG_GCC/FV/OVMF_CODE.fd
+
+  unit-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Compile and run all unit tests (auto-discovered, no hardcoded filenames)
+        run: |
+          LOGIC_FILES=$(find Source -name "*.c" ! -name "*App.c")
+          for test_file in Tests/UnitTests/test_*.c; do
+            echo "=== Running $test_file ==="
+            gcc -I Source/FanControl "$test_file" $LOGIC_FILES -o /tmp/unit_test_bin
+            /tmp/unit_test_bin
+          done
