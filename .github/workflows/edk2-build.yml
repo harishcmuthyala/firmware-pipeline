@@ -83,6 +83,12 @@ jobs:
           name: ovmf-firmware
           path: edk2/Build/OvmfX64/DEBUG_GCC/FV/OVMF_CODE.fd
 
+      - name: Upload custom platform applications
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-applications
+          path: edk2/Build/ServerPlatform/DEBUG_GCC/X64/*.efi
+
   unit-tests:
     runs-on: ubuntu-latest
 
